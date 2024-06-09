@@ -411,6 +411,7 @@ static bool fg_esr_fast_cal_en;
 
 static int fg_gen4_validate_soc_scale_mode(struct fg_gen4_chip *chip);
 static int fg_gen4_esr_fast_calib_config(struct fg_gen4_chip *chip, bool en);
+static int fg_gen4_rapid_soc_config(struct fg_gen4_chip *chip, bool en);
 
 static struct fg_sram_param pm8150b_v1_sram_params[] = {
 	PARAM(BATT_SOC, BATT_SOC_WORD, BATT_SOC_OFFSET, 4, 1, 1, 0, NULL,
@@ -1224,6 +1225,23 @@ static int fg_gen4_get_prop_soc_scale(struct fg_gen4_chip *chip)
 	chip->vbatt_res = chip->vbatt_avg - chip->dt.cutoff_volt_mv;
 	fg_dbg(fg, FG_FVSS, "Vbatt now=%d Vbatt avg=%d Vbatt res=%d\n",
 		chip->vbatt_now, chip->vbatt_avg, chip->vbatt_res);
+
+	/* Exit rapid soc decrease mode when battery voltage > 3700mV to recover real soc value */
+	if (chip->vbatt_avg > 3700) {
+		if (chip->dt.rapid_soc_dec_en) {
+			if(chip->rapid_soc_dec_en) {
+				fg_dbg(fg, FG_STATUS, "Vbatt > 3700, exit rapid soc decrease\n", fg->charge_status);
+				rc = fg_gen4_rapid_soc_config(chip, false);
+				if (rc < 0)
+					pr_err("Error in configuring for rapid SOC reduction rc:%d\n",
+						rc);
+				chip->rapid_soc_dec_en = false;
+			}
+		} else if (chip->vbatt_low) {
+			fg_dbg(fg, FG_STATUS, "Vbatt > 3700, reset vbatt_low = false\n", fg->charge_status);
+			chip->vbatt_low = false;
+		}
+	}
 
 	return rc;
 }
